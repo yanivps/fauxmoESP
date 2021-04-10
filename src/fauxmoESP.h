@@ -34,6 +34,7 @@ THE SOFTWARE.
 #define FAUXMO_TCP_PORT             1901
 #define FAUXMO_RX_TIMEOUT           3
 #define FAUXMO_DEVICE_UNIQUE_ID_LENGTH  12
+#define FAUXMO_NUM_OF_MAX_DEVICES 255
 
 //#define DEBUG_FAUXMO                Serial
 #ifdef DEBUG_FAUXMO
@@ -79,6 +80,7 @@ typedef struct {
     bool state;
     unsigned char value;
     char uniqueid[28];
+    unsigned char alexaDeviceId;
 } fauxmoesp_device_t;
 
 class fauxmoESP {
@@ -88,12 +90,14 @@ class fauxmoESP {
         ~fauxmoESP();
 
         unsigned char addDevice(const char * device_name);
+        unsigned char addDevice(const char * device_name, unsigned char alexa_device_id);
         bool renameDevice(unsigned char id, const char * device_name);
         bool renameDevice(const char * old_device_name, const char * new_device_name);
         bool removeDevice(unsigned char id);
         bool removeDevice(const char * device_name);
         char * getDeviceName(unsigned char id, char * buffer, size_t len);
         int getDeviceId(const char * device_name);
+        int getDeviceId(unsigned char alexa_device_id);
         void setDeviceUniqueId(unsigned char id, const char *uniqueid);
         void onSetState(TSetStateCallback fn) { _setCallback = fn; }
         bool setState(unsigned char id, bool state, unsigned char value);

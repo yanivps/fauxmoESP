@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <Arduino.h>
 #include "fauxmoESP.h"
 
+
 // -----------------------------------------------------------------------------
 // UDP
 // -----------------------------------------------------------------------------
@@ -161,7 +162,7 @@ String fauxmoESP::_makeMD5(String text)
   md5.begin();
   md5.add(text);
   md5.calculate();
-  
+
   md5.getBytes(bbuf);
   for (uint8_t i = 0; i < 16; i++)
   {
@@ -207,28 +208,33 @@ bool fauxmoESP::_onTCPList(AsyncClient *client, String url, String body) {
 	if (-1 == pos) return false;
 
 	// Get the id
-	unsigned char id = url.substring(pos+7).toInt();
+	unsigned char alexaDeviceId = url.substring(pos+7).toInt();
 
-	// This will hold the response string	
+	// This will hold the response string
 	String response;
 
 	// Client is requesting all devices
-	if (0 == id) {
+	if (0 == alexaDeviceId) {
 
 		response += "{";
 		for (unsigned char i=0; i< _devices.size(); i++) {
 			if (i>0) response += ",";
-			response += "\"" + String(i+1) + "\":" + _deviceJson(i, false);	// send short template
+			response += "\"" + String(_devices[i].alexaDeviceId) + "\":" + _deviceJson(i, false);	// send short template
 		}
 		response += "}";
 
 	// Client is requesting a single device
 	} else {
-		response = _deviceJson(id-1);
+		int id = getDeviceId(alexaDeviceId);
+		if (id == -1) {
+			return false;
+		} else {
+			response = _deviceJson(id);
+		}
 	}
 
 	_sendTCPResponse(client, "200 OK", (char *) response.c_str(), "application/json");
-	
+
 	return true;
 
 }
@@ -252,10 +258,14 @@ bool fauxmoESP::_onTCPControl(AsyncClient *client, String url, String body) {
 		DEBUG_MSG_FAUXMO("[FAUXMO] Handling state request\n");
 
 		// Get the index
-		unsigned char id = url.substring(pos+7).toInt();
-		if (id > 0) {
+		unsigned char alexaDeviceId = url.substring(pos+7).toInt();
+		int id = getDeviceId(alexaDeviceId);
 
-			--id;
+		if (id == -1) {
+			return false;
+		}
+
+		if (alexaDeviceId > 0) {
 
 			// Brightness
 			pos = body.indexOf("bri");
@@ -279,7 +289,7 @@ bool fauxmoESP::_onTCPControl(AsyncClient *client, String url, String body) {
 			_sendTCPResponse(client, "200 OK", response, "text/xml");
 
 			if (_setCallback) {
-				_setCallback(id, _devices[id].name, _devices[id].state, _devices[id].value);
+				_setCallback(alexaDeviceId, _devices[id].name, _devices[id].state, _devices[id].value);
 			}
 
 			return true;
@@ -289,7 +299,7 @@ bool fauxmoESP::_onTCPControl(AsyncClient *client, String url, String body) {
 	}
 
 	return false;
-	
+
 }
 
 bool fauxmoESP::_onTCPRequest(AsyncClient *client, bool isGet, String url, String body) {
@@ -335,7 +345,7 @@ bool fauxmoESP::_onTCPData(AsyncClient *client, void *data, size_t len) {
 	while (*p != ' ') p++;
 	*p = 0;
 	p++;
-	
+
 	// Split word and flag start of url
 	char * url = p;
 
@@ -425,13 +435,13 @@ void fauxmoESP::_onTCPClient(AsyncClient *client) {
 // -----------------------------------------------------------------------------
 
 fauxmoESP::~fauxmoESP() {
-  	
+
 	// Free the name for each device
 	for (auto& device : _devices) {
 		free(device.name);
   	}
-  	
-	// Delete devices  
+
+	// Delete devices
 	_devices.clear();
 
 }
@@ -442,6 +452,27 @@ void fauxmoESP::setDeviceUniqueId(unsigned char id, const char *uniqueid)
 }
 
 unsigned char fauxmoESP::addDevice(const char * device_name) {
+	return addDevice(device_name, 0);
+}
+
+unsigned char fauxmoESP::addDevice(const char * device_name, unsigned char alexa_device_id) {
+
+		// Find unused alexa device id
+		if (alexa_device_id == 0) {
+			for (size_t i = 1; i < FAUXMO_NUM_OF_MAX_DEVICES; i++) {
+				auto it = std::find_if(_devices.begin(), _devices.end(),
+					[i](const fauxmoesp_device_t &device) { return device.alexaDeviceId == i; }
+				);
+				if (it == _devices.end()) {
+					alexa_device_id = i;
+					break;
+				}
+			}
+		}
+		if (alexa_device_id == 0) {
+			DEBUG_MSG_FAUXMO("[FAUXMO] There are already %d devices registered which is the maximum\n", FAUXMO_NUM_OF_MAX_DEVICES);
+			return 0;
+		}
 
     fauxmoesp_device_t device;
     unsigned int device_id = _devices.size();
@@ -450,24 +481,34 @@ unsigned char fauxmoESP::addDevice(const char * device_name) {
     device.name = strdup(device_name);
   	device.state = false;
 	  device.value = 0;
+		device.alexaDeviceId = alexa_device_id;
 
     // create the uniqueid
     String mac = WiFi.macAddress();
 
-    snprintf(device.uniqueid, 27, "%s:%s-%02X", mac.c_str(), "00:00", device_id);
+    snprintf(device.uniqueid, 27, "%s:%s-%02X", mac.c_str(), "00:00", alexa_device_id);
 
     // Attach
     _devices.push_back(device);
 
-    DEBUG_MSG_FAUXMO("[FAUXMO] Device '%s' added as #%d\n", device_name, device_id);
+    DEBUG_MSG_FAUXMO("[FAUXMO] Device '%s' added with alexa id #%d\n", device_name, alexa_device_id);
 
-    return device_id;
+    return alexa_device_id;
 
 }
 
 int fauxmoESP::getDeviceId(const char * device_name) {
     for (unsigned int id=0; id < _devices.size(); id++) {
         if (strcmp(_devices[id].name, device_name) == 0) {
+            return id;
+        }
+    }
+    return -1;
+}
+
+int fauxmoESP::getDeviceId(unsigned char alexa_device_id) {
+    for (unsigned int id=0; id < _devices.size(); id++) {
+        if (_devices[id].alexaDeviceId == alexa_device_id) {
             return id;
         }
     }
@@ -493,7 +534,7 @@ bool fauxmoESP::renameDevice(const char * old_device_name, const char * new_devi
 bool fauxmoESP::removeDevice(unsigned char id) {
     if (id < _devices.size()) {
         free(_devices[id].name);
-		_devices.erase(_devices.begin()+id);
+				_devices.erase(_devices.begin()+id);
         DEBUG_MSG_FAUXMO("[FAUXMO] Device #%d removed\n", id);
         return true;
     }
