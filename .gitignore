@@ -12,3 +12,7 @@ pio
 .gcc-flags.json
 .pioenvs
 .piolibdeps
+
+# vscode folders
+.vscode/*
+.clang-format
