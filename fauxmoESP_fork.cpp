@@ -27,7 +27,7 @@ THE SOFTWARE.
 */
 
 #include <Arduino.h>
-#include "fauxmoESP.h"
+#include "fauxmoESP_fork.h"
 
 
 // -----------------------------------------------------------------------------
