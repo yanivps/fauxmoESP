@@ -590,6 +590,7 @@ void fauxmoESP::enable(bool enable) {
 	if (_enabled) {
 		DEBUG_MSG_FAUXMO("[FAUXMO] Enabled\n");
 	} else {
+		_server->end();
 		DEBUG_MSG_FAUXMO("[FAUXMO] Disabled\n");
 	}
 
