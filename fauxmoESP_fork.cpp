@@ -112,6 +112,30 @@ void fauxmoESP::_sendTCPResponse(AsyncClient *client, const char * code, char * 
 
 }
 
+void fauxmoESP::_sendTCPLightsResponse(AsyncClient *client, const char * code, char * body, const char * mime) {
+
+  char headers[strlen_P(FAUXMO_TCP_HEADERS) + 32];
+  size_t bodyLength = strlen(body);
+  snprintf_P(
+    headers, sizeof(headers),
+    FAUXMO_TCP_HEADERS,
+    code, mime, bodyLength
+  );
+
+  #if DEBUG_FAUXMO_VERBOSE_TCP
+    DEBUG_MSG_FAUXMO("[FAUXMO] Response:\n%s%s\n", headers, body);
+  #endif
+
+  _packetLengthLeftToSend = strlen(headers) + bodyLength;
+  _packetLengthLeftToSend -= client->write(headers);
+  _packetBuffer = body;
+  size_t will_send = client->write(_packetBuffer, _packetLengthLeftToSend);
+  _packetBuffer += will_send;
+  _packetLengthLeftToSend -= will_send;
+  _packetFullySent = _packetLengthLeftToSend <= 0;
+}
+
+
 String fauxmoESP::_deviceJson(unsigned char id, bool all = true) {
 
 	if (id >= _devices.size()) return "{}";
@@ -233,7 +257,8 @@ bool fauxmoESP::_onTCPList(AsyncClient *client, String url, String body) {
 		}
 	}
 
-	_sendTCPResponse(client, "200 OK", (char *) response.c_str(), "application/json");
+	_sendingLightsResponse = true;
+	_sendTCPLightsResponse(client, "200 OK", (char *) response.c_str(), "application/json");
 
 	return true;
 
@@ -380,7 +405,18 @@ void fauxmoESP::_onTCPClient(AsyncClient *client) {
 
 	            _tcpClients[i] = client;
 
-	            client->onAck([i](void *s, AsyncClient *c, size_t len, uint32_t time) {
+	            client->onAck([this, i](void *s, AsyncClient *c, size_t len, uint32_t time) {
+                if (!_sendingLightsResponse) return;
+                if (!_packetFullySent) {
+                  size_t will_send = c->write(_packetBuffer, _packetLengthLeftToSend);
+                  _packetBuffer = _packetBuffer + will_send;
+                  _packetLengthLeftToSend -= will_send;
+                  _packetFullySent = _packetLengthLeftToSend <= 0;
+                }
+                if (_packetFullySent) {
+                  _packetBuffer = NULL;
+                  _sendingLightsResponse = false;
+                }
 	            }, 0);
 
 	            client->onData([this, i](void *s, AsyncClient *c, void *data, size_t len) {

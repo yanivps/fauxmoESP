@@ -121,6 +121,10 @@ class fauxmoESP {
         WiFiUDP _udp;
         AsyncClient * _tcpClients[FAUXMO_TCP_MAX_CLIENTS];
         TSetStateCallback _setCallback = NULL;
+        size_t _packetLengthLeftToSend;
+        bool _packetFullySent;
+        char *_packetBuffer;
+        bool _sendingLightsResponse;
 
         String _deviceJson(unsigned char id, bool all); 	// all = true means we are listing all devices so use full description template
 
@@ -135,6 +139,7 @@ class fauxmoESP {
         bool _onTCPList(AsyncClient *client, String url, String body);
         bool _onTCPControl(AsyncClient *client, String url, String body);
         void _sendTCPResponse(AsyncClient *client, const char * code, char * body, const char * mime);
+        void _sendTCPLightsResponse(AsyncClient *client, const char * code, char * body, const char * mime);
 
         String _byte2hex(uint8_t zahl);
         String _makeMD5(String text);
